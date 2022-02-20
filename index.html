@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8" />
+    <title>gravx</title>
+    <style>
+        * {
+            padding: 0;
+            margin: 0;
+        }
+
+        canvas {
+            background: rgb(141, 141, 141);
+            display: block;
+            margin: 0 auto;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="myCanvas" width="1200" height="720"></canvas>
+    <script>
+
+        const canvas = document.getElementById("myCanvas");
+        const ctx = canvas.getContext("2d");
+
+        const r = 57.2957795;
+
+        const connectedreq = 4;
+        const gravity = 3000;
+        var colors = 4;
+        var speed = 40;
+        var gamestate = 10;
+        var lvl = 1;
+        var points = 0;
+        var combo = 1;
+
+        var lpressed = false;
+        var rpressed = false;
+        var zpressed = false;
+        var xpressed = false;
+        var dpressed = false;
+        var upressed = false;
+
+        var paused = false;
+        var anims = [];
+
+        const animtime = 0.4;
+        const offsetx = 300
+        const offsety = 200
+
+        const cr = [240, 0, 0, 230, 240, 230, 255, 170, 126, 75]
+        const cg = [0, 190, 0, 230, 50, 120, 165, 220, 63, 0]
+        const cb = [0, 0, 255, 0, 245, 40, 250, 255, 0, 150]
+
+        var mp = { x: 0, y: 0 };
+
+        function getcl(x) {
+            return Math.floor((x - offsetx) / 30);
+        }
+        function isinvec(vec, c) {
+
+            for (let i = 0; i < vec.length; i++) {
+                if (vec[i] == c) return true;
+            }
+            return false;
+        }
+        function pf(l) {
+            return 500 * lvl + 50 * lvl * (lvl - 1)
+
+        }
+
+        document.addEventListener("keydown", keyDownHandler, false);
+        document.addEventListener("keyup", keyUpHandler, false);
+        canvas.addEventListener('mousemove', function (evt) { mp = getmpos(canvas, evt); }, false);
+        canvas.addEventListener('mousedown', onclick, false);
+        function getmpos(canvas, evt) {
+            var rect = canvas.getBoundingClientRect();
+            return {
+                x: evt.clientX - rect.left,
+                y: evt.clientY - rect.top
+            };
+        }
+
+        function keyDownHandler(e) {
+            if (bd.gamestate == 0 && e.key == "s")
+                bd.gamestate = 1;
+            if (e.key == "r") {
+
+            }
+            if (e.key == "z")
+                zpressed = true;
+            if (e.key == "x")
+                xpressed = true;
+            if (e.key == "p") {
+                paused = !paused;
+            }
+            if (e.key == "c") {
+                bd.changeside();
+            }
+            if (e.key == "ArrowDown")
+                dpressed = true;
+            if (e.key == "ArrowUp")
+                upressed = true;
+            if (e.key == "ArrowLeft")
+                lpressed = true;
+            if (e.key == "ArrowRight")
+                rpressed = true;
+
+        }
+        function keyUpHandler(e) {
+            if (e.key == "ArrowLeft")
+                lpressed = false;
+            if (e.key == "ArrowRight")
+                rpressed = false;
+            if (e.key == "z")
+                zpressed = false;
+            if (e.key == "x")
+                xpressed = false;
+            if (e.key == "ArrowDown")
+                dpressed = false;
+            if (e.key == "ArrowUp")
+                upressed = false;
+
+
+        }
+
+        class button {
+            constructor(x, y, w, h, tx = "", visible = true, r = 128, g = 128, b = 128) {
+                this.x = x;
+                this.y = y;
+                this.w = w;
+                this.h = h;
+                this.tx = tx;
+                this.color = { r: r, g: g, b: b };
+                this.visible = visible;
+            }
+            hide() {
+                this.visible = false;
+            }
+            show() {
+                this.visible = true;
+            }
+            draw() {
+                if (this.visible) {
+                    drawr(this.x, this.y, this.w, this.h, this.color.r, this.color.g, this.color.b);
+                    ctx.font = "16px Arial";
+                    ctx.fillStyle = "#CCCCFF";
+                    ctx.fillText(this.tx, this.x + 10, this.y + 20);
+                }
+            }
+            cclick() {
+                if (this.visible)
+                    if (mp.x > this.x && mp.x < this.x + this.w && mp.y > this.y && mp.y < this.y + this.h) {
+                        this.color = { r: 128, g: 190, b: 200 };
+                        return true;
+                    }
+                this.color = { r: 128, g: 128, b: 128 };
+            }
+
+        }
+        class canim {
+            constructor(c) {
+                this.t = c.t;
+                this.posx = c.posx;
+                this.posy = c.posy;
+                this.timeleft = 0.6;
+
+            }
+            upd(dt) {
+                this.timeleft -= dt;
+                if (this.timeleft <= 0)
+                    return true;
+                return false;
+            }
+            draw() {
+                drawc(this.posx, this.posy, 18 - this.timeleft * 10, cr[this.t], cg[this.t], cb[this.t], this.timeleft * 1.3);
+            }
+
+        }
+        class cell {
+            constructor() {
+                this.t = Math.floor(Math.random() * colors);
+                this.posx = 0;
+                this.posy = 0;
+                this.targety = -1;
+                this.x = -1;
+                this.y = -1;
+                this.speedy = 0;
+                this.falling = false;
+            }
+            setpos(x, y) {
+                this.posx = x;
+                this.posy = y;
+            }
+            draw() {
+
+                drawc(this.posx, this.posy, 14, cr[this.t] * 0.7, cg[this.t] * 0.7, cb[this.t] * 0.7);
+                drawc(this.posx, this.posy, 12, cr[this.t], cg[this.t], cb[this.t]);
+                drawc(this.posx - 5, this.posy - 5, 5, 255, 255, 255, 0.5);
+
+            }
+            move(x, y) {
+                this.posx += x;
+                this.posy += y;
+            }
+            upd(dt) {
+                if (this.falling) {
+                    if (this.y < 6) {
+                        this.speedy += dt * gravity;
+                        this.move(0, dt * this.speedy);
+                        if (this.posy > this.targety) {
+                            if (this.speedy < gravity * dt * 2) {
+                                this.speedy = 0;
+                                this.posy = this.targety;
+                                this.falling = false;
+                            }
+                            else {
+                                let diff = this.posy - this.targety;
+                                this.posy = this.targety - diff / 2;
+                                this.speedy *= -0.5;
+                            }
+                        }
+                    }
+                    else {
+                        this.speedy -= dt * gravity;
+                        this.move(0, dt * this.speedy);
+                        if (this.posy < this.targety) {
+                            if (this.speedy > -2 * gravity * dt) {
+                                this.speedy = 0;
+                                this.posy = this.targety;
+                                this.falling = false;
+                            }
+                            else {
+                                let diff = this.posy - this.targety;
+                                this.posy = this.targety - diff / 2;
+                                this.speedy *= -0.5;
+                            }
+                        }
+                    }
+                    return 1;
+                }
+                return 0;
+            }
+        }
+        class block {
+            constructor(x = 200, y = 100) {
+                this.shape = Math.floor(Math.random() * 5);
+                this.rotation = 0
+                this.targrotation = 0;
+                this.cells = [];
+                this.posx = x;
+                this.posy = y;
+                this.rdelay = 0;
+                for (let i = 0; i < 4; i++) {
+                    this.cells[i] = new cell();
+                }
+                this.calcshape();
+            }
+            calc(n, d, a) {
+                let tx = this.posx;
+                let ty = this.posy;
+                this.cells[n].setpos(tx + d * Math.sin((this.rotation + a) / r), ty + d * Math.cos((this.rotation + a) / r));
+            }
+            calcshape() {
+
+                if (this.shape == 0) {
+                    this.calc(0, 21.2132, 45);
+                    this.calc(1, 21.2132, 135);
+                    this.calc(2, 21.2132, 225);
+                    this.calc(3, 21.2132, 315);
+                }
+                if (this.shape == 1) {
+                    this.calc(0, 15, 0);
+                    this.calc(1, 45, 0);
+                    this.calc(2, -15, 0);
+                    this.calc(3, -45, 0);
+                }
+                if (this.shape == 2) {
+                    this.calc(0, 42.4264, 45);
+                    this.calc(1, 0, 0);
+                    this.calc(2, 30, 0);
+                    this.calc(3, 30, 180);
+                }
+                if (this.shape == 3) {
+                    this.calc(0, 0, 0);
+                    this.calc(1, 30, 90);
+                    this.calc(2, 30, 0);
+                    this.calc(3, 30, 180);
+                }
+                if (this.shape == 4) {
+                    this.calc(0, 15, 0);
+                    this.calc(1, 15, 180);
+                    this.calc(2, 33.541, 63.43495);
+                    this.calc(3, -33.541, 63.43495);
+                }
+
+            }
+            draw() {
+                for (let i = 0; i < 4; i++) {
+                    this.cells[i].draw();
+                }
+            }
+            move(x, y) {
+                this.posx += x;
+                this.posy += y;
+                for (let i = 0; i < 4; i++) {
+
+                    this.cells[i].move(x, y);
+                }
+            }
+            rotate(a) {
+                this.targrotation += a;
+            }
+            getlowest(s) {
+                if (s == 0) {
+                    let maxy = 0;
+                    let maxi = 0;
+                    for (let i = 0; i < 4; i++) {
+                        if (this.cells[i] != null && this.cells[i].posy > maxy) {
+                            maxy = this.cells[i].posy;
+                            maxi = i;
+                        }
+                    }
+                    return maxi;
+                }
+                else {
+                    let miny = 1000;
+                    let mini = 0;
+                    debugger
+                    for (let i = 0; i < 4; i++) {
+                        if (this.cells[i] != null && this.cells[i].posy < miny) {
+                            miny = this.cells[i].posy;
+                            mini = i;
+                        }
+                    }
+                    return mini;
+                }
+            }
+            upd(dt) {
+                if (gamestate == 1) {
+                    let bspeed = speed;
+                    if (rpressed) bspeed = 400;
+                    this.move(dt * bspeed, 0);
+                }
+                if (this.rdelay >= 0) {
+                    this.rdelay -= dt;
+                    return;
+                }
+
+                if (this.rotation > this.targrotation) {
+                    this.rotation -= 700 * dt;
+                    if (this.rotation <= this.targrotation) {
+                        this.rotation = this.targrotation
+                        this.rdelay = 0.02;
+                    }
+                    this.calcshape();
+                }
+                else if (this.rotation < this.targrotation) {
+                    this.rotation += 700 * dt;
+                    if (this.rotation >= this.targrotation) {
+                        this.rotation = this.targrotation
+                        this.rdelay = 0.02;
+                    }
+                    this.calcshape();
+                }
+                else {
+                    if (zpressed)
+                        this.rotate(90);
+                    if (xpressed)
+                        this.rotate(-90)
+                }
+
+
+            }
+
+
+        }
+        class board {
+            constructor() {
+                this.cells = [];
+                for (let i = 0; i < 16; i++) {
+                    this.cells[i] = [];
+                    for (let j = 0; j < 12; j++) {
+                        this.cells[i][j] = null;
+                    }
+                }
+                this.side = 0;
+                this.bl = new block;
+                this.next = new block(80, 80);
+                this.delay = 0.5;
+
+            }
+            draw() {
+
+                for (let i = 0; i < 16; i++)
+                    for (let j = 0; j < 12; j++) {
+                        drawr(offsetx + 1 + 30 * i, offsety + 1 + 30 * j);
+                    }
+                ctx.beginPath();
+                ctx.strokeStyle = "#336033";
+                ctx.moveTo(offsetx - 100, offsety + 180);
+                ctx.lineTo(offsetx + 580, offsety + 180);
+                ctx.stroke();
+                ctx.closePath();
+                if (!paused)
+                    for (let i = 0; i < 16; i++)
+                        for (let j = 0; j < 12; j++) {
+                            if (this.cells[i][j] != null)
+                                this.cells[i][j].draw();
+                        }
+                this.bl.draw();
+                this.next.draw();
+            }
+            con(c, v) {
+                let x = c.x;
+                let y = c.y;
+                let t = c.t;
+
+                v.push(c);
+
+                let nc = [null, null, null, null];
+                if (x > 0) nc[0] = this.cells[x - 1][y];
+                if (y > 0) nc[1] = this.cells[x][y - 1];
+                if (x < 15) nc[2] = this.cells[x + 1][y];
+                if (y < 15) nc[3] = this.cells[x][y + 1];
+
+                for (let i = 0; i < 4; i++) {
+                    if (nc[i] != null && nc[i].t == t && !isinvec(v, nc[i])) {
+                        this.con(nc[i], v);
+                    }
+                }
+
+            }
+            check() {
+                let groups = 0;
+                let score = 0;
+                let rdy = true;
+
+                for (let i = 0; i < 16; i++)
+                    for (let j = 0; j < 12; j++) {
+                        if (this.cells[i][j] != null) {
+                            let connected = []
+                            this.con(this.cells[i][j], connected);
+                            let l = connected.length
+                            if (l >= connectedreq) {
+                                groups++;
+                                rdy = false;
+                                score += (8 + lvl * 2) * l;
+                                for (let i = 0; i < l; i++) {
+                                    let tmpx = connected[i].x;
+                                    let tmpy = connected[i].y;
+                                    anims.push(new canim(this.cells[tmpx][tmpy]))
+                                    this.cells[tmpx][tmpy] = null;//
+                                }
+                            }
+                        }
+                    }
+                this.checkfall();
+                points += score * combo * groups;
+                if (points >= pf(lvl)) {
+                    lvl++;
+                    if (lvl % 15 == 0) colors++
+                    speed = (lvl % 15 + 4) * (lvl % 15 + 3) + 20;
+                }
+                if (rdy) combo = 1;
+                else combo++
+                return rdy;
+            }
+            checkfall() {
+                for (let i = 0; i < 16; i++)
+                    for (let j = 4; j >= 0; j--) {
+                        if (this.cells[i][j] != null) {
+                            if (this.cells[i][j + 1] == null) {
+                                this.dropcell(i, this.cells[i][j], 0);
+                                this.cells[i][j] = null;
+                            }
+                        }
+                    }
+                for (let i = 0; i < 16; i++)
+                    for (let j = 7; j < 12; j++) {
+                        if (this.cells[i][j] != null) {
+                            if (this.cells[i][j - 1] == null) {
+                                this.dropcell(i, this.cells[i][j], 1);
+                                this.cells[i][j] = null;
+                            }
+                        }
+                    }
+            }
+            checkdrop(cltab) {
+                for (let i = 0; i < 16; i++) {
+                    let emptyspaces = 0;
+                    for (let ii = 0; ii < 6; ii++) {
+                        let row = ii;
+                        if (this.side == 1) row += 6;
+                        if (this.cells[i][row] == null)
+                            emptyspaces++;
+                    }
+                    if (cltab[i] > emptyspaces)
+                        return false;
+
+                }
+                return true;
+            }
+            dropcell(col, c, s) {
+                if (s == 0) {
+                    for (let i = 5; i >= 0; i--) {
+                        if (this.cells[col][i] == null) {
+                            this.cells[col][i] = c;
+                            c.targety = offsety + 15 + 30 * i;
+                            c.posx = offsetx + 15 + 30 * col
+                            c.x = col;
+                            c.y = i;
+                            c.falling = true;
+                            return;
+                        }
+                    }
+                } else {
+                    for (let i = 6; i < 12; i++) {
+                        if (this.cells[col][i] == null) {
+                            this.cells[col][i] = c;
+                            c.targety = offsety + 15 + 30 * i;
+                            c.posx = offsetx + 15 + 30 * col
+                            c.x = col;
+                            c.y = i;
+                            c.falling = true;
+                            return;
+                        }
+                    }
+                }
+            }
+            dropbl() {
+                let cltab = []
+                for (let i = 0; i < 16; i++) {
+                    cltab[i] = 0
+                }
+                for (let i = 0; i < 4; i++) {
+                    let cl = getcl(this.bl.cells[i].posx);
+                    if (cl < 0 || cl > 15) {
+                        return;
+                    }
+
+                    cltab[cl]++
+                }
+
+                if (this.checkdrop(cltab)) {
+                    for (let i = 0; i < 4; i++) {
+                        let tmp = this.bl.getlowest(this.side);
+                        this.dropcell(getcl(this.bl.cells[tmp].posx), this.bl.cells[tmp], this.side);
+                        this.bl.cells[tmp] = null;
+
+                    }
+                    gamestate = 2;
+                    this.bl = this.next;
+                    this.bl.move(120, 20);
+                    this.delay = 0.5;
+                    let yspawn = 80;
+                    if (this.side == 1) yspawn = 620;
+                    this.next = new block(80, yspawn);
+                }
+            }
+            changeside() {
+                if (this.side == 0) {
+                    this.side = 1;
+                    this.bl.move(0, 550);
+                    this.next.move(0, 550)
+                }
+                else {
+                    this.side = 0;
+                    this.bl.move(0, -550);
+                    this.next.move(0, -550);
+                }
+            }
+            upd(dt) {
+                if (dpressed || upressed)
+                    if (gamestate == 1)
+                        this.dropbl();
+
+                this.bl.upd(dt)
+                if (this.bl.posx > 1000)
+                    gamestate = 99;
+                if (gamestate == 2) {
+                    let checksum = 0;
+                    for (let i = 0; i < 16; i++)
+                        for (let j = 0; j < 12; j++) {
+                            if (this.cells[i][j] != null)
+                                checksum += this.cells[i][j].upd(dt);
+
+                        }
+                    if (checksum == 0) {
+                        this.delay -= dt;
+                        if (this.delay <= 0) {
+                            if (this.check())
+                                gamestate = 1;
+                            else {
+
+                                this.delay = 0.5;
+                            }
+                        }
+
+                    }
+                }
+
+            }
+
+        }
+
+        bd = new board();
+        classicb = new button(350, 300, 200, 40, "classic", true, 160, 160, 160);
+        function onclick(e) {
+            if (classicb.cclick()) {
+                gamestate = 1;
+                classicb.visible = false;
+            }
+        }
+
+
+        function drawc(x, y, rd, r, g, b, a = 1) {
+            ctx.beginPath();
+            ctx.arc(x, y, rd, 0, Math.PI * 2, false);
+            ctx.fillStyle = "rgba(" + r + "," + g + "," + b + "," + a + ")";
+            ctx.fill();
+            ctx.closePath();
+        }
+        function drawr(x, y, w = 28, h = 28, r = 200, g = 200, b = 200, a = 1) {
+            ctx.beginPath();
+            ctx.rect(x, y, w, h);
+            ctx.fillStyle = "rgba(" + r + "," + g + "," + b + "," + a + ")";
+            ctx.fill();
+            ctx.closePath();
+        }
+        function drawScore() {
+            ctx.beginPath()
+            ctx.rect(0, 0, 1200, 30);
+            ctx.fillStyle = "rgba(150,100,200,0.5)";
+            ctx.fill();
+            ctx.font = "16px Arial";
+            ctx.fillStyle = "#EEEEEE";
+            ctx.fillText("points: " + points, 208, 20);
+            ctx.fillText("level: " + lvl, 408, 20);
+            ctx.fillText("speed: " + speed, 608, 20);
+            ctx.fillText("colors: " + colors, 808, 20);
+            if (gamestate == 99) {
+                ctx.font = "56px Arial";
+                ctx.fillStyle = "#EEBE6E";
+                ctx.fillText("GAME OVER", 375, 190);
+            }
+            ctx.closePath();
+
+        }
+        function updall(dt) {
+            bd.upd(dt);
+            for (let i = 0; i < anims.length; i++) {
+                if (anims[i].upd(dt)) {
+                    anims.splice(i, 1);
+                    i--
+                }
+
+            }
+
+            classicb.cclick();
+        }
+        function drawall() {
+            if (!paused) updall(0.015);
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            bd.draw();
+            drawScore();
+            classicb.draw();
+
+            for (let i = 0; i < anims.length; i++)
+                anims[i].draw();
+        }
+
+        setInterval(drawall, 15);
+
+        //drawall();
+
+
+    </script>
+
+</body>
+
+</html>
